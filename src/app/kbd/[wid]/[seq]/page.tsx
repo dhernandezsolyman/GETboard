@@ -2,7 +2,7 @@ import React from 'react';
 import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
 import { getSessionByWid, getState, logRequest } from '@/lib/session';
-import { StatusBlock, Keyboard, ReadLinks } from '@/components/ui';
+import { StatusBlock, PreviewKeyboard, ReadLinks } from '@/components/ui';
 import { displayBuffer } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -71,7 +71,7 @@ export default async function KeyboardPage({
           ['SESSION_READ_ID', session.read_id],
         ]}
       />
-      <Keyboard wid={params.wid} seq={seq} />
+      <PreviewKeyboard wid={params.wid} seq={seq} />
       <ReadLinks rid={session.read_id} />
     </div>
   );

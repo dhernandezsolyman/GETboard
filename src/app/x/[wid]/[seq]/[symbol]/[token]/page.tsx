@@ -3,8 +3,8 @@ import { ExecuteView } from '@/components/pages';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// The only mutating route. /execute is the descriptive alias of /x.
-export default function ExecutePage({
+// Short alias of /execute. The only mutating route.
+export default function XShortPage({
   params,
 }: {
   params: { wid: string; seq: string; symbol: string; token: string };

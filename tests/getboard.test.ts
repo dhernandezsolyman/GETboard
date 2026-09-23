@@ -16,7 +16,7 @@ import {
   getState,
 } from '@/lib/session';
 import { makeToken, verifyToken, tokenHash } from '@/lib/token';
-import { Keyboard } from '@/components/ui';
+import { PreviewKeyboard, ExecuteKeyboard } from '@/components/ui';
 import { KEYBOARD_LAYOUT } from '@/lib/symbols';
 
 let db: Db & { close(): Promise<void> };
@@ -208,17 +208,22 @@ describe('GETboard', () => {
     expect((await getState(s.id)).buffer).toBe('H');
   });
 
-  it('15. the ACK keyboard is for NEXT_SEQUENCE', async () => {
+  it('15. the ACK keyboard is for NEXT_SEQUENCE (inline execute links)', async () => {
     const s = await createSession();
     const r = await type(s.id, s.write_id, 'H');
     expect(r.kind).toBe('success');
     if (r.kind !== 'success') return;
+    process.env.SERVER_SECRET = 'test-secret-please-ignore';
     const html = renderToStaticMarkup(
-      React.createElement(Keyboard, { wid: s.write_id, seq: r.nextSequence }),
+      React.createElement(ExecuteKeyboard, {
+        wid: s.write_id,
+        seq: r.nextSequence,
+      }),
     );
     expect(r.nextSequence).toBe(2);
-    expect(html).toContain(`/key/${s.write_id}/2/A`);
-    expect(html).toContain(`/key/${s.write_id}/2/COMMIT`);
+    // Direct execute links carry an inline token: /x/<wid>/2/<symbol>/<token>
+    expect(html).toContain(`/x/${s.write_id}/2/A/`);
+    expect(html).toContain(`/x/${s.write_id}/2/COMMIT/`);
   });
 
   it('16. stale keyboard renders STALE + link to current keyboard (logic)', async () => {
@@ -239,13 +244,14 @@ describe('GETboard', () => {
     expect(r.kind).toBe('conflict');
     if (r.kind !== 'conflict') return;
     const html = renderToStaticMarkup(
-      React.createElement(Keyboard, {
+      React.createElement(PreviewKeyboard, {
         wid: s.write_id,
         seq: r.expectedSequence,
       }),
     );
     expect(r.expectedSequence).toBe(2);
-    expect(html).toContain(`/key/${s.write_id}/2/A`);
+    // CONFLICT recovery uses the strict preview keyboard: /k/<wid>/2/<symbol>
+    expect(html).toContain(`/k/${s.write_id}/2/A`);
   });
 
   it('18. JSON state reflects writes immediately', async () => {

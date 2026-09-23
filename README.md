@@ -74,8 +74,8 @@ or land on a used/future sequence (a visible CONFLICT).
 | `/` | Create a session. Shows the WRITE, STATE, and OUTPUT URLs with copy buttons and a secrecy warning. |
 | `/kbd/[wid]` | 302 redirect to `/kbd/[wid]/[currentSeq]`. |
 | `/kbd/[wid]/[seq]` | Keyboard for that sequence. Stale seq → STALE + link to the current keyboard. |
-| `/key/[wid]/[seq]/[symbol]` | Preview. **Strictly non-mutating.** Shows the proposed symbol and exactly one EXECUTE link carrying a signed token. |
-| `/execute/[wid]/[seq]/[symbol]/[token]` | The only mutating route. SUCCESS / DUPLICATE / CONFLICT / REJECTED. |
+| `/key/[wid]/[seq]/[symbol]` (alias `/k/…`) | Preview. **Strictly non-mutating.** Shows the proposed symbol and exactly one EXECUTE link carrying a signed token. |
+| `/execute/[wid]/[seq]/[symbol]/[token]` (alias `/x/…`) | The only mutating route. SUCCESS / DUPLICATE / CONFLICT / REJECTED. |
 | `/api/session/[rid]` | Read-only JSON state. Ignores any query string (cache-bust friendly). |
 | `/out/[rid]` | The public, human-readable output page. |
 | `/debug/[wid]?key=ADMIN_KEY` | Diagnostics: request log, operations, commits. 404 without the right key. |
@@ -85,6 +85,17 @@ or land on a used/future sequence (a visible CONFLICT).
 > Follow a key link, then follow the single EXECUTE link. The ACK page shows
 > the new BUFFER and the next keyboard. Verify BUFFER after every keystroke.
 > On CONFLICT or STALE, use the links provided.
+
+**Two keyboard styles (a context-cost optimization).** The entry keyboard
+(`/kbd`) and CONFLICT/STALE recovery keyboards use the strict two-hop path:
+each key links to a non-mutating preview, which carries the single EXECUTE
+link. **ACK keyboards** (shown after a successful keystroke) instead link
+*directly* to the execute route with an inline single-use token, so a
+keystroke costs **one fetch instead of two**. This is safe because an ACK page
+is only ever reached *through* a one-time execute URL, so prefetchers and link
+previewers never land on it; strict SAFE MODE remains on the entry keyboard.
+Paths are also shortened (`/k`, `/x`) and tokens are compact (16 chars) to keep
+each page small — meaningful because a keyboard repeats ~74 links per page.
 
 Agent-facing pages start with a `<pre>` block of plain `KEY: VALUE` lines
 (`STATUS`, `SEQUENCE`, `NEXT_SEQUENCE`, `BUFFER`, `LAST_SYMBOL`, …). The buffer
@@ -115,12 +126,18 @@ Unknown symbols get an error page linking back to the current keyboard.
 
 ## Execute tokens (stateless, single-use by the DB)
 
+Compact 12-byte token, base64url-encoded to **16 characters**:
+
 ```
-token = base64url( exp || HMAC-SHA256(SERVER_SECRET, `${wid}|${seq}|${symbol}|${exp}`) )
+token = base64url( uint32be(exp_seconds) || HMAC-SHA256(SERVER_SECRET, `${wid}|${seq}|${symbol}|${exp_seconds}`)[0..8] )
 ```
 
-- Minted while rendering the preview page — **nothing is stored**.
-- `exp = now + 10 minutes`.
+- Minted while rendering a preview page **or** an ACK keyboard — **nothing is
+  stored**.
+- `exp = now + 10 minutes` (stored as unix seconds).
+- The HMAC is truncated to 8 bytes (64 bits): forging one still needs the
+  server secret, tokens expire, and the sequence gate + unique constraint mean
+  a valid signature can only ever record a single operation.
 - On execute we validate the signature, the expiry, and that `wid/seq/symbol`
   match the path.
 - **Single use is enforced by the database**, via `unique(session_id,
@@ -173,7 +190,10 @@ fetches a link can trigger the effect. GETboard mitigates this with what the
 code calls **SAFE MODE**:
 
 - Preview and keyboard pages are **strictly non-mutating**; only `/execute`
-  writes, and only with a valid signed token that a preview page produced.
+  (`/x`) writes, and only with a valid signed token.
+- The entry keyboard uses the strict preview→execute two-hop. ACK keyboards
+  carry inline execute tokens (one-hop) but are only reachable *through* a
+  one-time execute URL, so depth-1 prefetchers/previewers never see them.
 - All dynamic routes set `dynamic = 'force-dynamic'` and `revalidate = 0`.
 - Every response sends `Cache-Control: no-store, no-cache, must-revalidate,
   max-age=0` and `X-Robots-Tag: noindex, nofollow`.
