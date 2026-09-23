@@ -177,8 +177,10 @@ code calls **SAFE MODE**:
 - All dynamic routes set `dynamic = 'force-dynamic'` and `revalidate = 0`.
 - Every response sends `Cache-Control: no-store, no-cache, must-revalidate,
   max-age=0` and `X-Robots-Tag: noindex, nofollow`.
-- `robots.txt` is `Disallow: /`, and every page carries
-  `<meta name="robots" content="noindex,nofollow">`.
+- `robots.txt` blocks general crawlers (`User-agent: * / Disallow: /`) while
+  allowing user-initiated agent fetchers (`Claude-User`, `ChatGPT-User`) that
+  only fetch when a human asks — the app's actual use case. Every page also
+  carries `<meta name="robots" content="noindex,nofollow">`.
 - Every action URL is versioned by sequence, so replaying a stale link is a
   visible CONFLICT.
 
@@ -197,9 +199,13 @@ is **secrecy of the write ID.** Do not publish it.
   anchors, never Next.js `<Link>` (which prefetches).
 - Any cached agent-facing page is safe: it is sequence-versioned, so acting on
   it yields STALE/CONFLICT with recovery links.
-- The home page (`/`) creates a session on load; it is `Disallow`ed in
-  robots.txt and `no-store`, but treat a freshly loaded `/` as "a new session
-  was created."
+- The home page (`/`) creates a session on load; general crawlers are
+  `Disallow`ed and every response is `no-store`, but treat a freshly loaded `/`
+  as "a new session was created."
+- `robots.txt` allows the user-initiated fetchers `Claude-User` and
+  `ChatGPT-User` by design — without that, those agents refuse to fetch the
+  pages the app is built for. Access is not the security boundary; write-ID
+  secrecy is.
 
 ---
 

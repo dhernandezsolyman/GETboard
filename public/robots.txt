@@ -1,2 +1,16 @@
+# User-initiated agent fetchers only fetch a URL when a human explicitly asks
+# them to — which is exactly this app's use case — so they are allowed.
+# General-purpose crawlers/indexers remain fully blocked.
+#
+# Access is not the security boundary here: secrecy of the write ID is. The
+# noindex/nofollow response headers and meta tags still keep every page out of
+# search indexes.
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
 User-agent: *
 Disallow: /
