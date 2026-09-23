@@ -63,7 +63,7 @@ export default async function OutputPage({
           {state.commits.map((c, i) => (
             <li key={c.id}>
               <div className="meta">
-                #{state.commits.length - i} · {displayTime(c.createdAt)}
+                #{state.commits.length - i} · {displayTime(c.created_at)}
               </div>
               {c.text}
             </li>
