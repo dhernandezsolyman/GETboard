@@ -121,6 +121,19 @@ export function replay(ops: OperationRow[]): {
   return { buffer, nextSequence: maxSeq + 1, lastOperation };
 }
 
+/** Look up the commit text recorded at a specific sequence, if any. */
+async function commitAtSequence(
+  q: Queryable,
+  sessionId: string,
+  sequence: number,
+): Promise<string | null> {
+  const { rows } = await q.query(
+    `SELECT text FROM commits WHERE session_id = $1 AND sequence = $2`,
+    [sessionId, sequence],
+  );
+  return rows[0]?.text ?? null;
+}
+
 export async function getState(
   sessionId: string,
   db: Db = getDb(),
@@ -153,6 +166,9 @@ export type ExecuteResult =
       symbol: string;
       buffer: string;
       nextSequence: number;
+      // Set only when symbol === 'COMMIT': the text that was actually saved to
+      // the commits table, or null if the buffer was empty (no record created).
+      committed?: string | null;
     }
   | {
       kind: 'duplicate';
@@ -160,6 +176,7 @@ export type ExecuteResult =
       symbol: string;
       buffer: string;
       nextSequence: number;
+      committed?: string | null;
     }
   | {
       kind: 'conflict';
@@ -192,12 +209,17 @@ export async function execute(
         // Sequence already used.
         const state = replay(ops);
         if (existing.symbol === symbol) {
+          const committed =
+            symbol === 'COMMIT'
+              ? await commitAtSequence(tx, sessionId, seq)
+              : undefined;
           return {
             kind: 'duplicate' as const,
             sequence: seq,
             symbol,
             buffer: state.buffer,
             nextSequence: state.nextSequence,
+            committed,
           };
         }
         return {
@@ -229,6 +251,9 @@ export async function execute(
       const newOps = [...ops, { sequence: seq, symbol, created_at: '' }];
       const after = replay(newOps);
 
+      // Set only when symbol === 'COMMIT': the text saved (if any), so the ACK
+      // page can say plainly whether a message was actually recorded.
+      let committed: string | null | undefined;
       if (symbol === 'COMMIT') {
         // COMMIT: record the text committed (the buffer *before* this op),
         // unless the buffer was empty (then no commit record is created).
@@ -239,6 +264,9 @@ export async function execute(
              VALUES ($1, $2, $3)`,
             [sessionId, seq, committedText],
           );
+          committed = committedText;
+        } else {
+          committed = null;
         }
       }
 
@@ -252,6 +280,7 @@ export async function execute(
         symbol,
         buffer: after.buffer,
         nextSequence: after.nextSequence,
+        committed,
       };
     });
   } catch (err) {
@@ -262,12 +291,17 @@ export async function execute(
       const existing = ops.find((o) => o.sequence === seq);
       const state = replay(ops);
       if (existing && existing.symbol === symbol) {
+        const committed =
+          symbol === 'COMMIT'
+            ? await commitAtSequence(db, sessionId, seq)
+            : undefined;
         return {
           kind: 'duplicate',
           sequence: seq,
           symbol,
           buffer: state.buffer,
           nextSequence: state.nextSequence,
+          committed,
         };
       }
       return {

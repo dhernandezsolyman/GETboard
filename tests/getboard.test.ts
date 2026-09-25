@@ -276,19 +276,34 @@ describe('GETboard', () => {
     for (const ch of 'HI') await type(s.id, s.write_id, ch);
     const r = await type(s.id, s.write_id, 'COMMIT');
     expect(r.kind).toBe('success');
+    if (r.kind === 'success') expect(r.committed).toBe('HI');
     const state = await getState(s.id);
     expect(state.buffer).toBe('');
     expect(state.commits.length).toBe(1);
     expect(state.commits[0].text).toBe('HI');
 
-    // Empty-buffer COMMIT: consumes a sequence, creates no commit record.
+    // Empty-buffer COMMIT: consumes a sequence, creates no commit record, and
+    // the result says explicitly that nothing was saved (committed: null) so
+    // the ACK page never looks identical to a real commit.
     const before = state.commits.length;
     const seqBefore = state.nextSequence;
     const r2 = await type(s.id, s.write_id, 'COMMIT');
     expect(r2.kind).toBe('success');
+    if (r2.kind === 'success') expect(r2.committed).toBeNull();
     const state2 = await getState(s.id);
     expect(state2.commits.length).toBe(before);
     expect(state2.nextSequence).toBe(seqBefore + 1);
+
+    // Duplicate execute of that same empty COMMIT reports committed: null too
+    // (not undefined), reflecting what actually happened at that sequence.
+    const dup = await execute(
+      s.id,
+      seqBefore,
+      'COMMIT',
+      makeToken(s.write_id, seqBefore, 'COMMIT'),
+    );
+    expect(dup.kind).toBe('duplicate');
+    if (dup.kind === 'duplicate') expect(dup.committed).toBeNull();
   });
 
   it('21. output page displays committed messages (data present)', async () => {

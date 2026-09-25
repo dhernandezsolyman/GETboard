@@ -266,12 +266,37 @@ export async function ExecuteView({
     ['NEXT_SEQUENCE', String(result.nextSequence)],
   );
 
+  // COMMIT always resets BUFFER to "", which looks identical whether or not a
+  // message was actually saved. Make the outcome explicit so an empty-buffer
+  // COMMIT (a documented no-op that still consumes its sequence) is never
+  // mistaken for a message vanishing.
+  const isCommit = result.symbol === 'COMMIT';
+  if (isCommit) {
+    ackLines.push([
+      'COMMITTED',
+      result.committed ? displayBuffer(result.committed) : 'NONE (buffer was empty)',
+    ]);
+  }
+
   return (
     <div>
       <StatusBlock lines={ackLines} />
       {isDuplicate && (
         <p className="note">
           This keystroke was already recorded. State is unchanged.
+        </p>
+      )}
+      {isCommit && !result.committed && (
+        <p className="warn">
+          Nothing was saved: the buffer was already empty when COMMIT was
+          followed, so this COMMIT created no committed message. Type
+          characters before COMMIT to save a message.
+        </p>
+      )}
+      {isCommit && result.committed && (
+        <p className="note">
+          Saved to the OUTPUT page&rsquo;s committed messages. See the OUTPUT
+          link below.
         </p>
       )}
       {/* ACK keyboard: direct execute links with inline tokens (one fetch). */}
